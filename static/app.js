@@ -49,6 +49,44 @@ zone.addEventListener("drop", (e) => {
   names();
 });
 
+let currentTier = "free";
+let catalogue = { free: { stt: [], mt: [] }, paid: { stt: [], mt: [] } };
+
+document.querySelectorAll(".tier").forEach((btn) => {
+  btn.addEventListener("click", () => setTier(btn.dataset.tier));
+});
+
+function setTier(tier) {
+  currentTier = tier === "paid" ? "paid" : "free";
+  document.querySelectorAll(".tier").forEach((b) => {
+    const on = b.dataset.tier === currentTier;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  document.getElementById("paid-box").hidden = currentTier !== "paid";
+  renderEngines();
+}
+
+function renderEngines() {
+  const pack = catalogue[currentTier] || { stt: [], mt: [] };
+  const ul = document.getElementById("engine-list");
+  ul.innerHTML = "";
+  [...(pack.stt || []), ...(pack.mt || [])].forEach((e) => {
+    const li = document.createElement("li");
+    li.textContent = e.label;
+    li.title = e.role || "";
+    ul.appendChild(li);
+  });
+}
+
+fetch("/api/tiers")
+  .then((r) => r.json())
+  .then((data) => {
+    catalogue = data;
+    renderEngines();
+  })
+  .catch(() => renderEngines());
+
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   start(false);
@@ -56,6 +94,11 @@ form.addEventListener("submit", (e) => {
 demoBtn.addEventListener("click", () => start(true));
 
 async function start(demo) {
+  if (currentTier === "paid" && !document.getElementById("openai_key").value.trim()) {
+    rail.hidden = false;
+    setProgress("error", 0, "Paid mode needs an OpenAI API key.");
+    return;
+  }
   const fd = new FormData();
   if (demo) fd.append("demo", "1");
   if (video.files[0]) fd.append("video", video.files[0]);
@@ -63,8 +106,10 @@ async function start(demo) {
   fd.append("model", document.getElementById("model").value);
   fd.append("font", document.getElementById("font").value);
   fd.append("font_size", document.getElementById("font_size").value);
-  fd.append("online", document.getElementById("online").checked ? "1" : "0");
   fd.append("burn", document.getElementById("burn").checked ? "1" : "0");
+  fd.append("tier", currentTier);
+  fd.append("openai_key", document.getElementById("openai_key").value || "");
+  fd.append("paid_model", document.getElementById("paid_model").value);
 
   go.disabled = true;
   demoBtn.disabled = true;

@@ -26,6 +26,30 @@
   <main>
     <section class="stage" id="drop">
       <form id="form" class="panel">
+        <div class="tiers" role="tablist" aria-label="Model tier">
+          <button type="button" class="tier on" id="tier-free" data-tier="free" role="tab" aria-selected="true">
+            <span class="tier-kicker">no API key</span>
+            <strong>Free</strong>
+            <em>every free model, in parallel</em>
+          </button>
+          <button type="button" class="tier" id="tier-paid" data-tier="paid" role="tab" aria-selected="false">
+            <span class="tier-kicker">OpenAI</span>
+            <strong>Paid</strong>
+            <em>Whisper-1 + GPT-4o</em>
+          </button>
+        </div>
+        <ul class="engine-list" id="engine-list"></ul>
+        <div class="paid-box" id="paid-box" hidden>
+          <label>OpenAI API key
+            <input type="password" id="openai_key" name="openai_key" autocomplete="off" placeholder="sk-…" />
+          </label>
+          <label>Paid translator
+            <select id="paid_model" name="paid_model">
+              <option value="gpt-4o-mini" selected>GPT-4o mini — fast, cheap</option>
+              <option value="gpt-4o">GPT-4o — best idioms</option>
+            </select>
+          </label>
+        </div>
         <div class="dropzone" id="zone" tabindex="0">
           <div class="film-holes" aria-hidden="true"></div>
           <p class="dz-title">Drop a video here</p>
@@ -63,7 +87,6 @@
             <label>Font size
               <input type="number" name="font_size" id="font_size" min="32" max="96" value="52" />
             </label>
-            <label class="check"><input type="checkbox" id="online" checked /> Try Google Translate, then glossary</label>
             <label class="check"><input type="checkbox" id="burn" checked /> Hard-code onto video and export MP4</label>
           </div>
         </details>
@@ -98,7 +121,7 @@
   </main>
 
   <footer>
-    <p>Timestamps are copied from the audio, never interpolated. Titles, honorifics (Bey, Hanım, Paşa…) and idioms are glossary-locked before translation.</p>
+    <p>Free fires Google, MyMemory, LibreTranslate and the lexicon together and votes. Paid uses Whisper-1 then GPT. Timestamps stay with the audio. Titles, honorifics and idioms stay glossary-locked.</p>
   </footer>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

@@ -40,7 +40,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--font-size", type=int, default=52)
     p.add_argument("--no-burn", action="store_true", help="Only write SRT files")
-    p.add_argument("--offline", action="store_true", help="Do not call Google Translate")
+    p.add_argument(
+        "--offline",
+        action="store_true",
+        help="Free tier: skip online MT, glossary/lexicon only",
+    )
+    p.add_argument(
+        "--tier",
+        default="free",
+        choices=["free", "paid"],
+        help="free = all no-key models; paid = OpenAI Whisper-1 + GPT",
+    )
+    p.add_argument("--openai-key", help="OpenAI API key (or OPENAI_API_KEY)")
+    p.add_argument(
+        "--paid-model",
+        default="gpt-4o-mini",
+        choices=["gpt-4o-mini", "gpt-4o"],
+        help="Paid translation model",
+    )
     p.add_argument("--web", action="store_true", help="Start the web app")
     p.add_argument("--port", type=int, default=5000)
     args = p.parse_args(argv)
@@ -76,6 +93,9 @@ def main(argv: list[str] | None = None) -> int:
         burn=not args.no_burn and video is not None,
         prefer_online=not args.offline,
         progress=prog,
+        tier=args.tier,
+        openai_key=args.openai_key,
+        paid_model=args.paid_model,
     )
     print()
     print("Turkish SRT :", result.turkish_srt)

@@ -16,10 +16,7 @@ from dataclasses import dataclass, field
 from .glossary import HONORIFICS, IDIOMS, ISLAMIC, PHRASES, SFX, TITLE_WORDS
 from .lexicon import WORDS
 
-try:
-    from deep_translator import GoogleTranslator
-except Exception:  # pragma: no cover
-    GoogleTranslator = None  # type: ignore
+from .engines import openai_translate, openai_translate_batch, run_all_free_mt
 
 
 # Longest-first combined phrase table
@@ -340,25 +337,26 @@ class TranslateResult:
 
 
 class Translator:
-    def __init__(self, prefer_online: bool = True) -> None:
+    def __init__(
+        self,
+        prefer_online: bool = True,
+        *,
+        tier: str = "free",
+        openai_key: str | None = None,
+        paid_model: str = "gpt-4o-mini",
+    ) -> None:
         self.prefer_online = prefer_online
-        self._gt = None
-        self._gt_failed = False
-        self.stats = {"online": 0, "offline": 0, "titles": 0, "idioms": 0}
-
-    def _google(self, text: str) -> str | None:
-        if not self.prefer_online or self._gt_failed or GoogleTranslator is None:
-            return None
-        try:
-            if self._gt is None:
-                self._gt = GoogleTranslator(source="tr", target="ur")
-            out = self._gt.translate(text)
-            if out and out.strip():
-                self.stats["online"] += 1
-                return out.strip()
-        except Exception:
-            self._gt_failed = True
-        return None
+        self.tier = "paid" if tier == "paid" else "free"
+        self.openai_key = openai_key
+        self.paid_model = paid_model or "gpt-4o-mini"
+        self.stats = {
+            "tier": self.tier,
+            "online": 0,
+            "offline": 0,
+            "titles": 0,
+            "idioms": 0,
+            "engines": {},
+        }
 
     def translate_text(self, text: str, *, title: bool | None = None) -> TranslateResult:
         original = text
@@ -372,24 +370,46 @@ class Translator:
         protected: dict[str, str] = {}
         working, idiom_hits = self._protect(stripped, protected)
 
-        online = None
-        if not sfx_flag:
-            online = self._google(working)
+        method = "offline"
+        rendered = None
+        if sfx_flag:
+            rendered = self._restore(self._offline(working), protected)
+            method = "sfx"
+            self.stats["offline"] += 1
+        elif self.tier == "paid" and self.openai_key:
+            try:
+                hit = openai_translate(working, self.openai_key, self.paid_model)
+            except Exception:
+                hit = None
+            if hit:
+                rendered = self._restore(hit, protected)
+                method = self.paid_model
+                self.stats["online"] += 1
+                self.stats["engines"][method] = self.stats["engines"].get(method, 0) + 1
+        elif self.prefer_online:
+            ur, winner, raw = run_all_free_mt(working, offline_fn=self._offline)
+            for name, val in raw.items():
+                if val:
+                    self.stats["engines"][name] = self.stats["engines"].get(name, 0) + 1
+            if ur:
+                rendered = self._restore(ur, protected)
+                method = winner
+                if winner == "lexicon":
+                    self.stats["offline"] += 1
+                else:
+                    self.stats["online"] += 1
 
-        if online:
-            rendered = self._restore(online, protected)
-            method = "google"
-        else:
+        if rendered is None:
             rendered = self._restore(self._offline(working), protected)
             method = "offline"
             self.stats["offline"] += 1
+            self.stats["engines"]["lexicon"] = self.stats["engines"].get("lexicon", 0) + 1
 
         if title_flag:
             self.stats["titles"] += 1
         if idiom_hits:
             self.stats["idioms"] += idiom_hits
 
-        # Preserve surrounding whitespace / original line breaks count
         if original.endswith("\n"):
             rendered += "\n"
         return TranslateResult(
@@ -519,8 +539,11 @@ class Translator:
     def translate_subs(self, subs, progress=None) -> list:
         import srt as srtmod
 
-        out = []
         n = len(subs)
+        if self.tier == "paid" and self.openai_key and n:
+            return self._translate_subs_paid(subs, progress)
+
+        out = []
         for i, sub in enumerate(subs):
             res = self.translate_text(sub.content)
             out.append(
@@ -534,6 +557,52 @@ class Translator:
             )
             if progress and (i % 5 == 0 or i == n - 1):
                 progress(i + 1, n, res.method)
+        return out
+
+    def _translate_subs_paid(self, subs, progress=None) -> list:
+        import srt as srtmod
+
+        n = len(subs)
+        packed = []
+        for sub in subs:
+            protected: dict[str, str] = {}
+            working, hits = self._protect(sub.content.strip(), protected)
+            packed.append((sub, working, protected, hits, is_title_card(sub.content)))
+
+        out = []
+        batch = 16
+        for start in range(0, n, batch):
+            chunk = packed[start : start + batch]
+            lines = [p[1] for p in chunk]
+            try:
+                got = openai_translate_batch(lines, self.openai_key, self.paid_model)
+            except Exception:
+                got = [None] * len(chunk)
+            for (sub, working, bucket, hits, title_flag), ur in zip(chunk, got):
+                if ur:
+                    text = self._restore(ur, bucket)
+                    method = self.paid_model
+                    self.stats["online"] += 1
+                else:
+                    text = self._restore(self._offline(working), bucket)
+                    method = "offline"
+                    self.stats["offline"] += 1
+                if title_flag:
+                    self.stats["titles"] += 1
+                if hits:
+                    self.stats["idioms"] += hits
+                self.stats["engines"][method] = self.stats["engines"].get(method, 0) + 1
+                out.append(
+                    srtmod.Subtitle(
+                        index=sub.index,
+                        start=sub.start,
+                        end=sub.end,
+                        content=text,
+                        proprietary=("TITLE" if title_flag else getattr(sub, "proprietary", "")),
+                    )
+                )
+            if progress:
+                progress(min(start + batch, n), n, self.paid_model)
         return out
 
 

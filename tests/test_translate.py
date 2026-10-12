@@ -47,6 +47,13 @@ def test_timestamps_preserved():
         assert b.content.strip()
 
 
+def test_free_tier_offline_still_translates():
+    t = Translator(prefer_online=False, tier="free")
+    r = t.translate_text("İş işten geçti.")
+    assert "دیر" in r.urdu
+    assert t.stats["tier"] == "free"
+
+
 def test_sample_roundtrip_srt_text():
     path = ROOT / "examples" / "sample_tr.srt"
     subs = load_srt(path)

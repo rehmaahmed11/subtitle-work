@@ -9,6 +9,7 @@ from typing import Callable
 from .burn import burn_in
 from .srt_io import load_srt, save_srt
 from .transcribe import TranscribeError, extract_audio, transcribe_turkish
+from .engines import resolve_openai_key
 from .translate import Translator
 
 ProgressCb = Callable[[str, int, str], None]
@@ -36,6 +37,9 @@ def run_pipeline(
     prefer_online: bool = True,
     whisper_cache: str | None = None,
     progress: ProgressCb | None = None,
+    tier: str = "free",
+    openai_key: str | None = None,
+    paid_model: str = "gpt-4o-mini",
 ) -> PipelineResult:
     work = Path(work_dir)
     work.mkdir(parents=True, exist_ok=True)
@@ -47,6 +51,11 @@ def run_pipeline(
     if not srt_path and not video_path:
         raise ValueError("Provide a video file, an SRT file, or both.")
 
+    tier = "paid" if tier == "paid" else "free"
+    key = resolve_openai_key(openai_key) if tier == "paid" else None
+    if tier == "paid" and not key:
+        raise ValueError("Paid mode needs an OpenAI API key (or OPENAI_API_KEY).")
+
     # --- 1. Turkish SRT ---
     if srt_path:
         report("srt", 12, "Reading Turkish SRT…")
@@ -55,24 +64,49 @@ def run_pipeline(
     else:
         report("audio", 8, "Extracting audio (16 kHz mono)…")
         wav = extract_audio(video_path, work / "audio_16k.wav")
-        report("transcribe", 22, f"Transcribing Turkish with Whisper {model_size}…")
+        if tier == "paid":
+            report("transcribe", 22, "Transcribing Turkish with OpenAI Whisper-1…")
+        else:
+            report(
+                "transcribe",
+                22,
+                f"Free STT: local Whisper {model_size} (then base, tiny)…",
+            )
         try:
             subs_tr = transcribe_turkish(
                 wav,
                 model_size=model_size,
                 download_root=whisper_cache,
+                tier=tier,
+                openai_key=key,
             )
         except TranscribeError:
             raise
-        method = f"whisper-{model_size}"
+        method = "openai-whisper-1" if tier == "paid" else f"whisper-{model_size}"
 
     if not subs_tr:
         raise RuntimeError("No subtitle cues to translate.")
 
     tr_path = save_srt(subs_tr, work / "turkish.srt")
-    report("translate", 48, f"Translating {len(subs_tr)} cues Turkish → Urdu…")
+    if tier == "paid":
+        report(
+            "translate",
+            48,
+            f"Paid MT: {paid_model} on {len(subs_tr)} cues (titles · idioms)…",
+        )
+    else:
+        report(
+            "translate",
+            48,
+            f"Free MT: Google + MyMemory + Libre + lexicon on {len(subs_tr)} cues…",
+        )
 
-    translator = Translator(prefer_online=prefer_online)
+    translator = Translator(
+        prefer_online=prefer_online,
+        tier=tier,
+        openai_key=key,
+        paid_model=paid_model,
+    )
 
     def tprog(i, n, how):
         pct = 48 + int(32 * i / max(n, 1))
@@ -101,7 +135,7 @@ def run_pipeline(
         turkish_srt=tr_path,
         urdu_srt=ur_path,
         output_video=out_video,
-        method=method,
+        method=f"{method}/{tier}",
         stats=translator.stats,
         cues=len(subs_ur),
     )

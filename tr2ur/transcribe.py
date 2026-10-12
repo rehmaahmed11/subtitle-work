@@ -64,6 +64,64 @@ def _load_model(model_size: str, download_root: str | None):
         ) from exc
 
 
+def transcribe_openai_whisper(audio_path: str | Path, api_key: str) -> list[srt.Subtitle]:
+    """Paid: OpenAI Whisper-1 with segment timestamps."""
+    from .engines import openai_transcribe
+
+    # Compress so we stay under the 25 MB API cap.
+    src = Path(audio_path)
+    compact = src.with_suffix(".mp3")
+    if src.stat().st_size > 20 * 1024 * 1024 or src.suffix.lower() in {".wav", ".flac"}:
+        run_ffmpeg(
+            [
+                "-i",
+                str(src),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "libmp3lame",
+                "-b:a",
+                "64k",
+                str(compact),
+            ]
+        )
+        upload = compact
+    else:
+        upload = src
+    try:
+        result = openai_transcribe(str(upload), api_key)
+    except Exception as exc:
+        raise TranscribeError(f"OpenAI Whisper-1 failed: {exc}") from exc
+
+    segments = getattr(result, "segments", None) or []
+    subs: list[srt.Subtitle] = []
+    for i, seg in enumerate(segments, 1):
+        if isinstance(seg, dict):
+            text = (seg.get("text") or "").strip()
+            start = float(seg.get("start") or 0.0)
+            end = float(seg.get("end") or 0.0)
+        else:
+            text = (getattr(seg, "text", None) or "").strip()
+            start = float(getattr(seg, "start", 0.0) or 0.0)
+            end = float(getattr(seg, "end", 0.0) or 0.0)
+        if not text:
+            continue
+        st = seconds_to_td(start)
+        et = seconds_to_td(end)
+        if et <= st:
+            et = st + dt.timedelta(milliseconds=400)
+        for cue in _pack_cue(i, st, et, text):
+            subs.append(cue)
+    for i, sub in enumerate(subs, 1):
+        sub.index = i
+    if not subs:
+        raise TranscribeError("OpenAI Whisper-1 returned no segments.")
+    return subs
+
+
 def transcribe_turkish(
     audio_path: str | Path,
     *,
@@ -71,6 +129,40 @@ def transcribe_turkish(
     download_root: str | None = None,
     vad_filter: bool = True,
     progress=None,
+    tier: str = "free",
+    openai_key: str | None = None,
+) -> list[srt.Subtitle]:
+    if tier == "paid" and openai_key:
+        return transcribe_openai_whisper(audio_path, openai_key)
+
+    # Free: try the requested local Whisper size, then the rest of the free stack.
+    sizes = []
+    for s in (model_size, "small", "base", "tiny"):
+        if s not in sizes:
+            sizes.append(s)
+    last_err: Exception | None = None
+    for size in sizes:
+        try:
+            return _transcribe_local(
+                audio_path,
+                model_size=size,
+                download_root=download_root,
+                vad_filter=vad_filter,
+                progress=progress,
+            )
+        except TranscribeError as exc:
+            last_err = exc
+            continue
+    raise last_err or TranscribeError("All free Whisper models failed.")
+
+
+def _transcribe_local(
+    audio_path: str | Path,
+    *,
+    model_size: str,
+    download_root: str | None,
+    vad_filter: bool,
+    progress,
 ) -> list[srt.Subtitle]:
     model = _load_model(model_size, download_root)
     try:

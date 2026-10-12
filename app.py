@@ -20,6 +20,7 @@ from flask import (
 )
 
 from tr2ur.burn import make_demo_video
+from tr2ur.engines import catalogue
 from tr2ur.pipeline import run_pipeline
 from tr2ur.srt_io import load_srt
 
@@ -56,6 +57,11 @@ def index():
 @app.route("/fonts/<path:name>")
 def fonts(name: str):
     return send_from_directory(ROOT / "fonts", name)
+
+
+@app.get("/api/tiers")
+def api_tiers():
+    return jsonify(catalogue())
 
 
 def _new_job() -> dict:
@@ -97,9 +103,12 @@ def _run(job: dict, video: Path | None, srt: Path | None, opts: dict) -> None:
             font_key=opts.get("font") or "naskh",
             font_size=int(opts.get("font_size") or 52),
             burn=bool(opts.get("burn", True)) and video is not None,
-            prefer_online=bool(opts.get("online", True)),
+            prefer_online=True,
             whisper_cache=str(ROOT / "jobs" / ".whisper"),
             progress=prog,
+            tier=opts.get("tier") or "free",
+            openai_key=opts.get("openai_key"),
+            paid_model=opts.get("paid_model") or "gpt-4o-mini",
         )
         preview = []
         try:
@@ -149,7 +158,9 @@ def api_process():
         "font": request.form.get("font", "naskh"),
         "font_size": request.form.get("font_size", "52"),
         "burn": request.form.get("burn", "1") != "0",
-        "online": request.form.get("online", "1") != "0",
+        "tier": request.form.get("tier", "free"),
+        "openai_key": request.form.get("openai_key", "").strip(),
+        "paid_model": request.form.get("paid_model", "gpt-4o-mini"),
     }
 
     job = _new_job()

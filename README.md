@@ -2,10 +2,18 @@
 
 A small atelier that follows one pipeline and does not invent timestamps:
 
-1. **Audio → SRT** — extract 16 kHz mono from the video, transcribe Turkish with Whisper (`faster-whisper`), keep word-level start/end.
-2. **Turkish → Urdu** — lock titles, honorifics (`Bey`, `Hanım`, `Paşa`…), Islamic formulae, and idioms to a glossary, then translate the rest (Google when the network allows, otherwise an offline lexicon). Cue times are copied, never rewritten.
-3. **Hard-code** — shape Urdu (reshaper + bidi), write an ASS file, burn it on the picture with libass and a bundled Noto Naskh / Nastaliq font.
+1. **Audio → SRT** — extract 16 kHz mono from the video, transcribe Turkish, keep word-level start/end.
+2. **Turkish → Urdu** — lock titles, honorifics (`Bey`, `Hanım`, `Paşa`…), Islamic formulae, and idioms to a glossary, then translate the rest. Cue times are copied, never rewritten.
+3. **Hard-code** — shape Urdu, write an ASS file, burn it on the picture with a bundled Noto Naskh / Nastaliq font.
 4. **Export** — `urdu_burned.mp4` plus both SRT files.
+
+Two systems in one:
+
+| | **Free** | **Paid** |
+| --- | --- | --- |
+| Speech | Local Whisper small, then base, then tiny | OpenAI Whisper-1 |
+| Translate | **All** free engines in parallel — Google, MyMemory, LibreTranslate, plus the glossary/lexicon — then a majority vote | GPT-4o mini or GPT-4o with an idiom/title prompt |
+| Key | none | `OPENAI_API_KEY` or the field in the UI |
 
 ## Install
 
@@ -25,14 +33,15 @@ The first Whisper run downloads a model (tiny / base / small / medium). If that 
 python app.py
 ```
 
-Open the printed URL. Drop a video, optionally a Turkish SRT, or press **Try the 14-second demo**.
+Open the printed URL. Pick **Free** or **Paid**, drop a video (optionally a Turkish SRT), or press **Try the sample reel**.
 
 ## CLI
 
 ```bash
-python cli.py film.mp4
+python cli.py film.mp4                          # free: all no-key models
+python cli.py film.mp4 --tier paid --openai-key sk-...
 python cli.py film.mp4 --srt film.tr.srt --font nastaliq
-python cli.py film.mp4 --no-burn          # SRT only
+python cli.py film.mp4 --no-burn
 python cli.py --web
 ```
 
