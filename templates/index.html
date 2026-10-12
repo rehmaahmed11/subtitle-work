@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PERDE — Türkçe ses → اردو سب ٹائٹل</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="mast">
+    <div class="mark">
+      <span class="crescent">﴾</span>
+      <div>
+        <p class="kicker">audio → srt → اردو → burn-in</p>
+        <h1>PERDE</h1>
+      </div>
+    </div>
+    <p class="lede">
+      Turkish speech is lifted off the soundtrack, timed to the frame, then
+      rendered into Urdu that keeps titles, honorifics and idioms — and is
+      hard-coded onto the picture.
+    </p>
+  </header>
+
+  <main>
+    <section class="stage" id="drop">
+      <form id="form" class="panel">
+        <div class="dropzone" id="zone" tabindex="0">
+          <div class="film-holes" aria-hidden="true"></div>
+          <p class="dz-title">Drop a video here</p>
+          <p class="dz-sub">mp4 · mkv · mov · webm — or pair it with a Turkish SRT</p>
+          <div class="file-row">
+            <label class="btn">
+              Choose video
+              <input type="file" name="video" id="video" accept="video/*,.mp4,.mkv,.mov,.webm,.avi" hidden />
+            </label>
+            <label class="btn ghost">
+              Turkish SRT
+              <input type="file" name="srt" id="srt" accept=".srt,text/plain" hidden />
+            </label>
+          </div>
+          <p class="picked" id="picked">No files yet.</p>
+        </div>
+
+        <details class="settings">
+          <summary>Pipeline settings</summary>
+          <div class="grid">
+            <label>Whisper model (audio → SRT)
+              <select name="model" id="model">
+                <option value="tiny">tiny — fastest</option>
+                <option value="base">base</option>
+                <option value="small" selected>small — recommended</option>
+                <option value="medium">medium — slower, sharper</option>
+              </select>
+            </label>
+            <label>Urdu font
+              <select name="font" id="font">
+                <option value="naskh" selected>Noto Naskh — clean on video</option>
+                <option value="nastaliq">Noto Nastaliq — classical Urdu</option>
+              </select>
+            </label>
+            <label>Font size
+              <input type="number" name="font_size" id="font_size" min="32" max="96" value="52" />
+            </label>
+            <label class="check"><input type="checkbox" id="online" checked /> Try Google Translate, then glossary</label>
+            <label class="check"><input type="checkbox" id="burn" checked /> Hard-code onto video and export MP4</label>
+          </div>
+        </details>
+
+        <div class="actions">
+          <button type="submit" class="btn gold" id="go">Run the pipeline</button>
+          <button type="button" class="btn ghost" id="demo">Try the sample reel</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="rail" id="rail" hidden>
+      <ol class="steps" id="steps">
+        <li data-step="audio">Extract audio</li>
+        <li data-step="transcribe">Turkish SRT</li>
+        <li data-step="translate">Urdu (titles · idioms)</li>
+        <li data-step="burn">Hard-code &amp; export</li>
+      </ol>
+      <div class="meter"><span id="bar"></span></div>
+      <p class="status" id="status">Queued…</p>
+    </section>
+
+    <section class="result" id="result" hidden>
+      <h2>Export</h2>
+      <p class="meta" id="meta"></p>
+      <div class="downloads" id="downloads"></div>
+      <div class="preview-wrap">
+        <video id="player" controls playsinline></video>
+        <div class="cues" id="cues"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Timestamps are copied from the audio, never interpolated. Titles, honorifics (Bey, Hanım, Paşa…) and idioms are glossary-locked before translation.</p>
+  </footer>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

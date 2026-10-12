@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+work/
+uploads/
+outputs/
+jobs/
+.pytest_cache/
+.mypy_cache/
+*.mp4
+!examples/**
+.DS_Store
